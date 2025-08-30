@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>発注管理システム</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="header">
+    <h1>発注管理システム</h1>
+    <div class="controls">
+      <!-- カテゴリ追加 -->
+      <input type="text" id="newCategoryInput" placeholder="新しいカテゴリ">
+      <button onclick="addCategory()">カテゴリ追加</button>
+      <button onclick="removeCategory()">カテゴリ削除</button>
+    </div>
+
+    <div class="controls">
+      <!-- 品目追加 -->
+      <input type="text" id="newItemInput" placeholder="新しい品目">
+      <select id="categorySelect"></select>
+      <button onclick="addItem()">品目追加</button>
+    </div>
+    <div class="controls">
+      <!-- 日付一括変更 -->
+      <input type="date" id="bulkDateInput">
+      <input type="number" id="bulkDaysInput" placeholder="必要日数">
+      <button onclick="applyBulkDays()">指定日の必要日数を一括変更</button>
+    </div>
+  </div>
+
+  <!-- カテゴリ切り替えタブ -->
+  <div id="tabs" class="tabs"></div>
+
+  <!-- テーブル表示領域 -->
+  <div class="table-container">
+    <table id="orderTable">
+      <thead id="tableHead"></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
