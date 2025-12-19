@@ -1,9 +1,11 @@
 // -----------------------------
 // データ保持用
 // -----------------------------
-let categories = ["全表示", "パン類", "牛乳類", "包材"];
-let items = []; // { name, category, records: {date: {stock, order, days, safety}} }
-let currentCategory = "全表示";
+// 【変更】初期値から "全表示" を削除
+let categories = ["パン類", "牛乳類", "包材"];
+let items = []; 
+// 【変更】初期選択はカテゴリの先頭にする
+let currentCategory = categories[0] || "";
 
 // 表示する日付範囲（前後15日）
 const DAYS_RANGE = 15;
@@ -19,8 +21,17 @@ function loadData() {
   const data = localStorage.getItem('orderData');
   if (data) {
     const obj = JSON.parse(data);
-    categories = obj.categories || categories;
+    
+    // 【変更】読み込んだデータに「全表示」が含まれていたら除外する
+    let loadedCats = obj.categories || categories;
+    categories = loadedCats.filter(c => c !== "全表示");
+    
     items = obj.items || items;
+
+    // 現在のカテゴリが存在しないものになっていたら、先頭にリセット
+    if (!categories.includes(currentCategory) && categories.length > 0) {
+      currentCategory = categories[0];
+    }
   }
 }
 
@@ -28,7 +39,7 @@ function loadData() {
 // 初期化
 // -----------------------------
 window.onload = () => {
-  loadData(); // ← localStorageから復元
+  loadData(); 
   renderTabs();
   renderCategorySelect();
   renderTable();
@@ -57,21 +68,25 @@ function renderCategorySelect() {
   const sel = document.getElementById("categorySelect");
   sel.innerHTML = "";
   categories.forEach(cat => {
-    if (cat !== "全表示") {
-      const opt = document.createElement("option");
-      opt.value = cat;
-      opt.textContent = cat;
-      sel.appendChild(opt);
-    }
+    // 【変更】"全表示"を除外する判定を削除（そもそもデータに入れないため）
+    const opt = document.createElement("option");
+    opt.value = cat;
+    opt.textContent = cat;
+    sel.appendChild(opt);
   });
 }
 
 function addCategory() {
   const name = document.getElementById("newCategoryInput").value.trim();
+  // 【変更】"全表示"禁止のチェックは不要になったので削除
   if (name && !categories.includes(name)) {
     categories.push(name);
+    // 新規追加したカテゴリをすぐに選択状態にする
+    currentCategory = name;
+    
     renderTabs();
     renderCategorySelect();
+    renderTable(); // テーブルも更新
     saveData();
   }
   document.getElementById("newCategoryInput").value = "";
@@ -79,10 +94,16 @@ function addCategory() {
 
 function removeCategory() {
   const name = document.getElementById("newCategoryInput").value.trim();
-  if (name && categories.includes(name) && name !== "全表示") {
+  // 【変更】"全表示"削除禁止のチェックを削除
+  if (name && categories.includes(name)) {
     categories = categories.filter(c => c !== name);
     items = items.filter(i => i.category !== name);
-    if (currentCategory === name) currentCategory = "全表示";
+    
+    // 削除後、カテゴリが残っていれば先頭を選択、なければ空に
+    if (currentCategory === name) {
+        currentCategory = categories.length > 0 ? categories[0] : "";
+    }
+    
     renderTabs();
     renderCategorySelect();
     renderTable();
@@ -92,17 +113,28 @@ function removeCategory() {
 }
 
 // -----------------------------
-// 品目機能
+// 品目機能（修正版：入力クリアバグ対策済み）
 // -----------------------------
 function addItem() {
-  const name = document.getElementById("newItemInput").value.trim();
-  const cat = document.getElementById("categorySelect").value;
-  if (name && cat) {
-    items.push({ name, category: cat, records: {} });
-    renderTable();
-    saveData();
+  const nameInput = document.getElementById("newItemInput");
+  const name = nameInput.value.trim();
+  const catSelect = document.getElementById("categorySelect");
+  const cat = catSelect.value;
+
+  if (!name) return;
+
+  // カテゴリがない場合のエラー処理
+  if (!cat) {
+    alert("エラー: カテゴリが存在しません。\n先にカテゴリを追加してください。");
+    return;
   }
-  document.getElementById("newItemInput").value = "";
+
+  items.push({ name, category: cat, records: {} });
+  renderTable();
+  saveData();
+  
+  // 成功時のみクリア
+  nameInput.value = "";
 }
 
 // -----------------------------
@@ -113,6 +145,9 @@ function renderTable() {
   const body = document.getElementById("tableBody");
   head.innerHTML = "";
   body.innerHTML = "";
+
+  // カテゴリがない、または選択されていない場合は何も表示しない
+  if (!currentCategory) return;
 
   // 日付範囲
   const today = new Date();
@@ -138,7 +173,8 @@ function renderTable() {
 
   // ボディ
   items
-    .filter(i => currentCategory === "全表示" || i.category === currentCategory)
+    // 【変更】"全表示"判定を削除。単純にカテゴリ一致のみを見る
+    .filter(i => i.category === currentCategory)
     .forEach(item => {
       const tr = document.createElement("tr");
       let tdItem = document.createElement("td");
@@ -204,26 +240,33 @@ function updateRecord(itemName, date, field, value) {
 }
 
 // -----------------------------
-// 計算機能
+// 計算機能（修正済み）
 // -----------------------------
 function calculateOrder(itemName, date) {
   let item = items.find(i => i.name === itemName);
   const record = item.records[date];
   if (!record) return;
 
-  // 前回の入力を探す
   const dates = Object.keys(item.records).sort();
   const idx = dates.indexOf(date);
   if (idx <= 0) return;
   const prevDate = dates[idx - 1];
   const prev = item.records[prevDate];
 
-  if (prev && prev.order !== "" && record.stock !== "") {
-    const used = prev.order - record.stock;
+  if (prev && prev.stock !== "" && prev.order !== "" && record.stock !== "") {
+    
+    // 計算式: (前回在庫 + 前回発注) - 今回在庫
+    const prevTotal = Number(prev.stock) + Number(prev.order);
+    const used = prevTotal - Number(record.stock);
+
     const daysPassed = (new Date(date) - new Date(prevDate)) / (1000 * 60 * 60 * 24);
+    
+    if (daysPassed <= 0) return;
+
     const daily = used / daysPassed;
     const need = daily * record.days + record.safety;
     record.order = Math.max(Math.round(need), 0);
+    
     renderTable();
     saveData();
   }
@@ -254,8 +297,8 @@ function changeValue(itemName, date, field, delta) {
   let item = items.find(i => i.name === itemName);
   if (!item.records[date]) item.records[date] = { stock: "", order: "", days: 3, safety: 0 };
   item.records[date][field] = (Number(item.records[date][field]) || 0) + delta;
-  renderTable(); // 表示更新
-  saveData();    // localStorage 保存
+  renderTable();
+  saveData();
 }
 
 function removeItem(name) {
